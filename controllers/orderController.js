@@ -10,9 +10,11 @@ const createOrder = async (req, res) => {
   try {
     const {
       items,
+      bundles,
       fulfillmentType,
       deliveryAddress,
       paymentMethod,
+      senderInstapayNumber,
       guestInfo,
       discountCode,
       discountSavings,
@@ -22,13 +24,25 @@ const createOrder = async (req, res) => {
       notes,
     } = req.body;
 
-    if (!items || items.length === 0) {
+    const hasPlainItems = items && items.length > 0;
+    const hasBundles = bundles && bundles.length > 0;
+
+    if (!hasPlainItems && !hasBundles) {
       return res.status(400).json({ message: "No items in order" });
     }
 
-    const subtotal =
-      itemsTotal ??
-      items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    // itemsTotal from the client already includes bundle totals (see
+    // Checkout.jsx), but we also recompute defensively in case it's ever
+    // omitted, so a malformed payload doesn't silently charge 0.
+    const plainItemsSubtotal = (items || []).reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0,
+    );
+    const bundlesSubtotal = (bundles || []).reduce(
+      (acc, b) => acc + b.finalPrice,
+      0,
+    );
+    const subtotal = itemsTotal ?? plainItemsSubtotal + bundlesSubtotal;
 
     const savings = discountSavings ?? 0;
     const checkoutPhone = guestInfo?.phone || req.user?.phone || "";
@@ -58,7 +72,8 @@ const createOrder = async (req, res) => {
       user: req.user ? req.user._id : null,
       guestInfo: guestInfo || null,
       checkoutPhone,
-      items,
+      items: items || [],
+      bundles: bundles || [],
       totalPrice: finalPrice,
       notes: notes?.trim() || "",
       discountCode: discountCode || null,
@@ -66,6 +81,8 @@ const createOrder = async (req, res) => {
       fulfillmentType,
       deliveryAddress: fulfillmentType === "delivery" ? deliveryAddress : null,
       paymentMethod,
+      senderInstapayNumber:
+        paymentMethod === "instapay" ? senderInstapayNumber || null : null,
       deliveryRegion,
       pickupLocation,
     });
@@ -100,6 +117,7 @@ const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
       .populate("items.product", "name image")
+      .populate("bundles.items.product", "name image")
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
@@ -113,6 +131,7 @@ const getAllOrders = async (req, res) => {
     const orders = await Order.find()
       .populate("user", "name email phone")
       .populate("items.product", "name image")
+      .populate("bundles.items.product", "name image")
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {

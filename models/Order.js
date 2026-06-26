@@ -12,6 +12,21 @@ const orderItemSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, default: 1 },
 });
 
+// A single line on the order representing one bundle purchase.
+// `items` holds the flattened products inside the bundle (for receipts /
+// stock-keeping), while the top-level fields hold the bundle's own pricing
+// so admins can see "Mix of 3: 100 EGP -> 90 EGP (10% off)" without having
+// to re-derive it from the nested items.
+const orderBundleSchema = new mongoose.Schema({
+  bundleId: { type: mongoose.Schema.Types.ObjectId, ref: "Bundle" },
+  name: { type: String, required: true },
+  originalPrice: { type: Number, required: true }, // subtotal before discount
+  discountPct: { type: Number, default: 0 },
+  discountAmount: { type: Number, default: 0 },
+  finalPrice: { type: Number, required: true }, // subtotal after discount
+  items: [orderItemSchema],
+});
+
 const orderSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -23,6 +38,7 @@ const orderSchema = new mongoose.Schema(
     },
     checkoutPhone: { type: String },
     items: [orderItemSchema],
+    bundles: [orderBundleSchema],
     totalPrice: { type: Number, required: true },
 
     fulfillmentType: {
@@ -68,6 +84,7 @@ const orderSchema = new mongoose.Schema(
       enum: ["cash", "card", "instapay"],
       default: "cash",
     },
+    senderInstapayNumber: { type: String, default: null },
     discountCode: { type: String, default: null },
     discountSavings: { type: Number, default: 0 },
   },
